@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Campus AI v4 — Full College Assistant</title>
+  <link rel="stylesheet" href="style.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet"/>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══════════ SIDEBAR ══════════ -->
+  <aside id="sidebar">
+    <div id="brand">
+      <div id="brand-logo">
+        <svg viewBox="0 0 24 24" fill="white" width="20" height="20">
+          <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/>
+        </svg>
+      </div>
+      <div>
+        <div id="brand-name">Campus<span>AI</span></div>
+        <div id="brand-sub">v4 · Full Knowledge Assistant</div>
+      </div>
+      <button id="theme-btn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+    </div>
+
+    <!-- Tabs -->
+    <div id="tab-bar">
+      <button class="tab active" data-tab="crawl-tab" onclick="switchTab(this)">Crawl</button>
+      <button class="tab" data-tab="gallery-tab" onclick="switchTab(this)">Gallery</button>
+      <button class="tab" data-tab="deadlines-tab" onclick="switchTab(this)">Deadlines</button>
+      <button class="tab" data-tab="import-tab" onclick="switchTab(this)">Import</button>
+      <button class="tab" data-tab="kb-tab" onclick="switchTab(this)">KB</button>
+    </div>
+
+    <!-- ── CRAWL TAB ── -->
+    <div id="crawl-tab" class="tab-content active">
+      <div class="field-row">
+        <label class="sb-label">College Website URL</label>
+        <input id="url-input" type="text" placeholder="https://www.yourcollege.edu"/>
+      </div>
+      <div class="field-row">
+        <label class="sb-label">Max Pages: <span id="max-pages-val">50</span></label>
+        <input id="max-pages" type="range" min="10" max="150" value="50" class="slider"
+          oninput="el('max-pages-val').textContent=this.value"/>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-item"><input type="checkbox" id="opt-ocr" checked/><label for="opt-ocr">OCR scanned PDFs</label></div>
+        <div class="toggle-item"><input type="checkbox" id="opt-images" checked/><label for="opt-images">Extract images <span class="badge-new">NEW</span></label></div>
+        <div class="toggle-item"><input type="checkbox" id="opt-crossdomain" checked/><label for="opt-crossdomain">Follow external PDFs</label></div>
+        <div class="toggle-item"><input type="checkbox" id="opt-gdrive" checked/><label for="opt-gdrive">Google Drive files</label></div>
+      </div>
+      <button id="crawl-btn" onclick="startCrawl()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        Crawl & Index Everything
+      </button>
+      <button id="stop-btn" class="danger-btn hidden" onclick="stopCrawl()">⏹ Stop</button>
+
+      <div id="progress-wrap" class="hidden">
+        <div class="sb-label row-between"><span>Progress</span><span id="progress-pct">0%</span></div>
+        <div id="crawl-progress-bar"><div id="crawl-bar-fill"></div></div>
+        <div id="crawl-stats">
+          <span id="stat-pages" class="stat-blue">0 pages</span>
+          <span id="stat-pdfs" class="stat-amber">0 PDFs</span>
+          <span id="stat-imgs" class="stat-green">0 imgs</span>
+        </div>
+        <div id="crawl-log"></div>
+      </div>
+
+      <div id="quick-section" class="hidden">
+        <div class="sb-label" style="margin-top:12px">Quick Questions</div>
+        <button class="qbtn" onclick="ask('What is the timetable for CSE department?')">📅 CSE Timetable</button>
+        <button class="qbtn" onclick="ask('What is the complete fee structure?')">💰 Fee Structure</button>
+        <button class="qbtn" onclick="ask('What is the admission procedure?')">🎓 Admissions</button>
+        <button class="qbtn" onclick="ask('List all faculty with contact details')">👨‍🏫 Faculty Info</button>
+        <button class="qbtn" onclick="ask('What are the upcoming exam dates?')">📝 Exam Schedule</button>
+        <button class="qbtn" onclick="ask('Show all notices and circulars')">📢 Notices</button>
+        <button class="qbtn" onclick="ask('What scholarships are available?')">🏆 Scholarships</button>
+        <button class="qbtn" onclick="ask('Show college campus photos and images')">🖼️ Campus Photos</button>
+      </div>
+    </div>
+
+    <!-- ── GALLERY TAB ── -->
+    <div id="gallery-tab" class="tab-content">
+      <div class="sb-label">Images from College Website</div>
+      <div id="gallery-count" class="gallery-meta hidden"></div>
+      <div id="image-gallery">
+        <div class="gallery-empty">
+          <div style="font-size:32px;margin-bottom:8px">🖼️</div>
+          <div>Images from the college website will appear here after crawling.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── DEADLINES TAB ── -->
+    <div id="deadlines-tab" class="tab-content">
+      <div class="sb-label">Auto-Detected Deadlines & Events</div>
+      <div id="deadlines-list">
+        <div class="gallery-empty">
+          <div style="font-size:32px;margin-bottom:8px">⏰</div>
+          <div>Upcoming dates and deadlines found on the website will appear here after crawling.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── IMPORT TAB ── -->
+    <div id="import-tab" class="tab-content">
+      <div class="import-info">
+        <div>🔐</div>
+        <div>For <strong>login-protected</strong> pages. Copy text from the portal and paste here.</div>
+      </div>
+      <div class="field-row">
+        <label class="sb-label">Title</label>
+        <input id="import-title" type="text" placeholder="e.g. Student Portal Timetable"/>
+      </div>
+      <div class="field-row">
+        <label class="sb-label">Paste Content</label>
+        <textarea id="import-content" placeholder="Paste any content here..."></textarea>
+      </div>
+      <div class="field-row">
+        <label class="sb-label">Or fetch a URL</label>
+        <input id="import-url" type="text" placeholder="https://drive.google.com/..."/>
+        <button class="small-btn" onclick="importUrl()">Fetch URL</button>
+      </div>
+      <button id="import-btn" onclick="importManual()">Add to Knowledge Base</button>
+      <div id="import-status" class="hidden"></div>
+      <div id="imported-list-wrap" class="hidden">
+        <div class="sb-label" style="margin-top:10px">Added (<span id="import-count">0</span>)</div>
+        <div id="imported-list"></div>
+      </div>
+    </div>
+
+    <!-- ── KB TAB ── -->
+    <div id="kb-tab" class="tab-content">
+      <div id="kb-stats-row" class="hidden">
+        <div class="kb-stat"><div class="kb-stat-n" id="kbs-total">0</div><div class="kb-stat-l">Total</div></div>
+        <div class="kb-stat"><div class="kb-stat-n" id="kbs-pages">0</div><div class="kb-stat-l">Pages</div></div>
+        <div class="kb-stat"><div class="kb-stat-n" id="kbs-pdfs">0</div><div class="kb-stat-l">PDFs</div></div>
+        <div class="kb-stat"><div class="kb-stat-n" id="kbs-imgs">0</div><div class="kb-stat-l">Images</div></div>
+      </div>
+      <div class="field-row" style="margin-top:8px">
+        <input id="kb-search" type="text" placeholder="Search knowledge base..." oninput="filterKb(this.value)"/>
+      </div>
+      <div id="kb-list"></div>
+      <div id="kb-empty" class="gallery-empty">No documents indexed yet.</div>
+      <button class="danger-btn" style="margin-top:10px" onclick="clearKb()">🗑 Clear All Knowledge</button>
+    </div>
+
+    <div id="sb-footer">Campus AI v4 · Claude + Jina AI + OCR.space</div>
+  </aside>
+
+  <!-- ══════════ MAIN PANEL ══════════ -->
+  <main id="chat-panel">
+    <header id="chat-hd">
+      <div id="chat-hd-left">
+        <div id="chat-avatar">AI</div>
+        <div>
+          <div id="chat-hd-title">Campus Assistant</div>
+          <div id="chat-hd-sub" class="muted">Index your college website to start</div>
+        </div>
+      </div>
+      <div id="chat-hd-right">
+        <div id="kb-badge" class="hidden"><div class="green-dot"></div><span id="kb-badge-text">0 docs</span></div>
+
+        <!-- Language selector -->
+        <select id="lang-select" title="Answer language">
+          <option value="english">🇬🇧 English</option>
+          <option value="telugu">🇮🇳 Telugu</option>
+          <option value="hindi">🇮🇳 Hindi</option>
+          <option value="tamil">🇮🇳 Tamil</option>
+        </select>
+
+        <!-- Voice button -->
+        <button id="voice-btn" class="icon-btn" onclick="toggleVoice()" title="Voice input">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+
+        <button class="icon-btn" onclick="clearChat()" title="Clear chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+            <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Voice indicator -->
+    <div id="voice-bar" class="hidden">
+      <div id="voice-waves"><span></span><span></span><span></span><span></span><span></span></div>
+      <div id="voice-text">Listening... speak your question</div>
+      <button onclick="stopVoice()">Stop</button>
+    </div>
+
+    <div id="messages">
+      <div class="welcome">
+        <div class="welcome-icon">🎓</div>
+        <h2>Campus AI v4</h2>
+        <p>The most advanced college chatbot — reads every page, PDF, and image on your college website.</p>
+        <div class="feature-grid">
+          <div class="feat-card">🖼️<span>Image Gallery</span></div>
+          <div class="feat-card">🎙️<span>Voice Mode</span></div>
+          <div class="feat-card">⏰<span>Deadline Tracker</span></div>
+          <div class="feat-card">🌐<span>Multilingual</span></div>
+          <div class="feat-card">📊<span>Smart Tables</span></div>
+          <div class="feat-card">💡<span>Follow-ups</span></div>
+          <div class="feat-card">📄<span>OCR PDFs</span></div>
+          <div class="feat-card">☁️<span>Google Drive</span></div>
+        </div>
+        <div class="how-it-works">
+          <div class="step"><div class="step-n">1</div><div>Enter college URL → <strong>Crawl & Index Everything</strong></div></div>
+          <div class="step"><div class="step-n">2</div><div>Browse the <strong>Gallery</strong> tab to see all extracted images</div></div>
+          <div class="step"><div class="step-n">3</div><div>Check <strong>Deadlines</strong> tab for auto-detected upcoming dates</div></div>
+          <div class="step"><div class="step-n">4</div><div>Ask in <strong>any language</strong> — voice or text</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Image lightbox -->
+    <div id="lightbox" class="hidden" onclick="closeLightbox()">
+      <div id="lightbox-inner" onclick="event.stopPropagation()">
+        <img id="lightbox-img" src="" alt=""/>
+        <div id="lightbox-caption"></div>
+        <button id="lightbox-close" onclick="closeLightbox()">✕</button>
+      </div>
+    </div>
+
+    <div id="input-area">
+      <div id="input-wrap">
+        <textarea id="msg-input" placeholder="Ask anything about your college... (or use 🎙️ voice)" rows="1"></textarea>
+        <button id="send-btn" onclick="sendMsg()">
+          <svg viewBox="0 0 24 24" fill="white" width="17" height="17"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+      </div>
+      <div id="input-hint">Enter to send · Shift+Enter for new line · 🎙️ for voice</div>
+    </div>
+  </main>
+</div>
+
+<script src="crawler.js"></script>
+<script src="chat.js"></script>
+</body>
+</html>
