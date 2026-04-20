@@ -11,9 +11,13 @@
 // ✅ Paste your FREE Gemini API key here (from https://aistudio.google.com)
 const GEMINI_API_KEY = 'AIzaSyDL4MJs3ViLMNcnYwfUd9gOXXMYjJjUS3U';
 
-// Gemini model — gemini-1.5-flash is free and very capable
-const GEMINI_MODEL   = 'gemini-2.0-flash';
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+// Gemini models to try in order (fallback chain)
+const GEMINI_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash-latest',
+  'gemini-1.5-pro-latest'
+];
 
 let chatHistory  = [];
 let isLoading    = false;
@@ -30,39 +34,52 @@ let isDark       = true;
 //  Different format from OpenAI/Anthropic — simpler!
 // ════════════════════════════════════
 async function callGemini(systemPrompt, messages) {
-  // Convert chat history to Gemini format
-  // Gemini uses "user" and "model" (not "assistant")
-  const contents = messages.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }]
-  }));
+  // Build contents — inject system prompt as first user turn for max compatibility
+  // Then alternate user/model turns from history
+  const contents = [];
 
-  const body = {
-    system_instruction: {
-      parts: [{ text: systemPrompt }]
-    },
-    contents: contents,
-    generationConfig: {
-      maxOutputTokens: 1500,
-      temperature: 0.7,
-    }
-  };
-
-  const res = await fetch(GEMINI_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-
-  const data = await res.json();
-
-  if (!res.ok) {
-    const errMsg = data.error?.message || `API error ${res.status}`;
-    throw new Error(errMsg);
+  // Add system prompt fused into first user message
+  const historyWithSys = [...messages];
+  if (historyWithSys.length > 0) {
+    historyWithSys[0] = {
+      ...historyWithSys[0],
+      content: systemPrompt + '\n\n---\n\n' + historyWithSys[0].content
+    };
+  } else {
+    historyWithSys.push({ role: 'user', content: systemPrompt });
   }
 
-  // Extract text from Gemini response
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
+  // Convert to Gemini format (user/model alternation required)
+  for (const m of historyWithSys) {
+    contents.push({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    });
+  }
+
+  const body = {
+    contents,
+    generationConfig: { maxOutputTokens: 1500, temperature: 0.7 }
+  };
+
+  // Try each model in fallback chain
+  let lastErr = '';
+  for (const model of GEMINI_MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+    try {
+      const res  = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) { lastErr = data.error?.message || `HTTP ${res.status}`; continue; }
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) return text;
+      lastErr = 'Empty response from ' + model;
+    } catch(e) { lastErr = e.message; }
+  }
+  throw new Error('All models failed. Last error: ' + lastErr);
 }
 
 // ════════════════════════════════════
