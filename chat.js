@@ -8,15 +8,17 @@
 //  4. Paste it below
 // ═══════════════════════════════════════════════════════════════════
 
-// ✅ Paste your FREE Gemini API key here (from https://aistudio.google.com)
-const GEMINI_API_KEY = 'AIzaSyDL4MJs3ViLMNcnYwfUd9gOXXMYjJjUS3U';
+// API key stored in browser localStorage — user enters it once in the settings UI
+function getGroqKey() { return localStorage.getItem('campus_ai_groq_key') || ''; }
+function saveGroqKey(k) { if(k) localStorage.setItem('campus_ai_groq_key', k.trim()); }
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-// Gemini models to try in order (fallback chain)
-const GEMINI_MODELS = [
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-pro-latest'
+// Groq models to try in fallback order
+const GROQ_MODELS = [
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant',
+  'mixtral-8x7b-32768',
+  'gemma2-9b-it'
 ];
 
 let chatHistory  = [];
@@ -34,52 +36,36 @@ let isDark       = true;
 //  Different format from OpenAI/Anthropic — simpler!
 // ════════════════════════════════════
 async function callGemini(systemPrompt, messages) {
-  // Build contents — inject system prompt as first user turn for max compatibility
-  // Then alternate user/model turns from history
-  const contents = [];
-
-  // Add system prompt fused into first user message
-  const historyWithSys = [...messages];
-  if (historyWithSys.length > 0) {
-    historyWithSys[0] = {
-      ...historyWithSys[0],
-      content: systemPrompt + '\n\n---\n\n' + historyWithSys[0].content
-    };
-  } else {
-    historyWithSys.push({ role: 'user', content: systemPrompt });
-  }
-
-  // Convert to Gemini format (user/model alternation required)
-  for (const m of historyWithSys) {
-    contents.push({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }]
-    });
-  }
-
+  // Using Groq API (OpenAI-compatible format — simple and reliable)
   const body = {
-    contents,
-    generationConfig: { maxOutputTokens: 1500, temperature: 0.7 }
+    messages: [
+      { role: 'system', content: systemPrompt },
+      ...messages.map(m => ({ role: m.role, content: m.content }))
+    ],
+    max_tokens: 1500,
+    temperature: 0.7
   };
 
-  // Try each model in fallback chain
+  // Try each Groq model in fallback order
   let lastErr = '';
-  for (const model of GEMINI_MODELS) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+  for (const model of GROQ_MODELS) {
     try {
-      const res  = await fetch(url, {
+      const res = await fetch(GROQ_API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + getGroqKey()
+        },
+        body: JSON.stringify({ ...body, model })
       });
       const data = await res.json();
       if (!res.ok) { lastErr = data.error?.message || `HTTP ${res.status}`; continue; }
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      const text = data.choices?.[0]?.message?.content;
       if (text) return text;
       lastErr = 'Empty response from ' + model;
     } catch(e) { lastErr = e.message; }
   }
-  throw new Error('All models failed. Last error: ' + lastErr);
+  throw new Error(lastErr || 'All models failed');
 }
 
 // ════════════════════════════════════
@@ -537,9 +523,9 @@ The student has not indexed their college website yet. Remind them to use the Cr
 
   } catch (e) {
     removeTyping(tid);
-    const isKeyErr = /API_KEY_INVALID|API key|403|400/i.test(e.message);
+    const isKeyErr = /API_KEY_INVALID|API key|401|invalid_api_key/i.test(e.message);
     addBotMsg(isKeyErr
-      ? `<span style="color:#dc2626">⚠️ Invalid Gemini API key. Open <code>chat.js</code> and replace <code>AIzaSyDL4MJs3ViLMNcnYwfUd9gOXXMYjJjUS3U</code> with your key from <a href="https://aistudio.google.com" target="_blank" style="color:#1d4ed8">aistudio.google.com</a>.</span>`
+      ? `<span style="color:#dc2626">⚠️ Invalid Groq API key. Open `chat.js` and replace `YOUR_KEY_HERE` with your key from console.groq.com</span>`
       : `<span style="color:#dc2626">Error: ${esc(e.message)}</span>`
     );
     console.error(e);
@@ -669,8 +655,69 @@ function addTyping() {
 }
 function removeTyping(id) { el(id)?.remove(); }
 
+
+// ════════════════════════════════════
+//  SETTINGS — API KEY MANAGEMENT
+// ════════════════════════════════════
+function openSettings() {
+  const modal = el('settings-modal');
+  modal.style.display = 'flex';
+  const existing = getGroqKey();
+  if (existing) el('key-input').value = existing;
+  el('key-input').focus();
+}
+
+function closeSettings() {
+  el('settings-modal').style.display = 'none';
+  el('key-status').style.display = 'none';
+}
+
+function saveSettings() {
+  const key = el('key-input').value.trim();
+  if (!key) {
+    showKeyStatus('Please enter your Groq API key', false); return;
+  }
+  if (!key.length > 20) {
+    showKeyStatus('That does not look like a valid key. Get yours from console.groq.com', false); return;
+  }
+  saveGroqKey(key);
+  showKeyStatus('✅ Key saved! You can now ask questions.', true);
+  el('key-dot').style.display = 'none';
+  setTimeout(closeSettings, 1500);
+}
+
+function showKeyStatus(msg, ok) {
+  const s = el('key-status');
+  s.textContent = msg;
+  s.style.display = 'block';
+  s.style.background = ok ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)';
+  s.style.color = ok ? '#4ade80' : '#f87171';
+  s.style.border = ok ? '1px solid rgba(52,211,153,0.2)' : '1px solid rgba(248,113,113,0.2)';
+}
+
+function checkKeyOnLoad() {
+  const key = getGroqKey();
+  if (!key) {
+    // Show red dot on settings button and open settings automatically
+    el('key-dot').style.display = 'block';
+    setTimeout(openSettings, 800);
+    addBotMsg('👋 Welcome! First, click <strong>⚙️</strong> in the top-right to enter your free Groq API key from <a href="https://console.groq.com" target="_blank" style="color:#1d4ed8">console.groq.com</a>. Then index your college website and start asking questions!');
+  }
+}
+
+// Close modal on backdrop click
+document.addEventListener('DOMContentLoaded', () => {
+  el('settings-modal')?.addEventListener('click', (e) => {
+    if (e.target === el('settings-modal')) closeSettings();
+  });
+  el('key-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveSettings();
+  });
+});
+
 document.addEventListener('DOMContentLoaded', () => {
   buildKbList();
+  checkKeyOnLoad();
   const inp = el('msg-input');
   inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } });
   inp.addEventListener('input', function () { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 120) + 'px'; });
